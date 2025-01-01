@@ -1,0 +1,69 @@
+import logging
+from scapy.all import sniff, IP, TCP
+from collections import defaultdict
+
+# Setup logging
+logging.basicConfig(filename="suspicious_activity.log", level=logging.INFO, format="%(asctime)s - %(message)s")
+
+# Track for port scans and traffic volume
+scan_tracker = defaultdict(set)  # Use a set to ensure unique ports
+traffic_counter = defaultdict(int)
+
+# Function to detect port scans
+def detect_port_scan(packet):
+    if packet.haslayer(TCP) and packet.haslayer(IP):
+        ip_src = packet[IP].src
+        port_dst = packet[TCP].dport
+
+        # Add the port to the set for the source IP
+        scan_tracker[ip_src].add(port_dst)
+
+        # Trigger alert if more than 10 unique ports are scanned
+        if len(scan_tracker[ip_src]) > 10:
+            alert = f"Port scan detected from IP: {ip_src}, Scanned ports: {list(scan_tracker[ip_src])}"
+            print(alert)
+            logging.info(alert)
+
+# Function to detect high traffic volume
+def detect_high_traffic(packet):
+    if packet.haslayer(IP):
+        ip_src = packet[IP].src
+
+        # Filter private/internal traffic
+        if ip_src.startswith(("10.", "127.", "192.168.", "172.")):
+            return
+
+        traffic_counter[ip_src] += 1
+
+        # Check if traffic exceeds threshold
+        if traffic_counter[ip_src] > 20:
+            alert = f"High traffic volume detected from IP: {ip_src}"
+            print(alert)
+            logging.info(alert)
+            traffic_counter[ip_src] = 0
+
+# Function to log suspicious packets
+def log_suspicious_packet(packet):
+    if packet.haslayer(IP):
+        ip_layer = packet[IP]
+
+        # Example condition for suspicious packets
+        if ip_layer.src.startswith("192.168"):  # Replace with your suspicious logic
+            alert = f"Suspicious Packet - Source: {ip_layer.src}, Destination: {ip_layer.dst}"
+            print(alert)
+            logging.info(alert)
+
+# Function to process packets and call detection functions
+def process_packet(packet):
+    log_suspicious_packet(packet)
+    detect_port_scan(packet)
+    detect_high_traffic(packet)
+
+# Main function to start sniffing
+def main():
+    print("Starting security tool...")
+    sniff(filter="ip", prn=process_packet, store=False)
+    
+
+if __name__ == "__main__":
+    main()
